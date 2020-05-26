@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+{% load staticfiles %}
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="x-ua-compatible" content="ie=edge">
+
+  <title>OCR字母识别</title>
+
+  <link rel="stylesheet" type="text/css" href="{% static 'css/bootstrap.min.css' %}">
+
+  <style>
+    .container {max-width: 960px;}
+    .border-top { border-top: 1px solid #e5e5e5; }
+    .border-bottom { border-bottom: 1px solid #e5e5e5; }
+    .border-top-gray { border-top-color: #adb5bd; }
+    .box-shadow { box-shadow: 0 .25rem .75rem rgba(0, 0, 0, .05); }
+    .lh-condensed { line-height: 1.25; }
+    .preview-image {max-width: 420px; height: 300px}
+    .thumbnail-image {max-width: 100px; height: 45px}
+  </style>
+
+</head>
+<body>
+
+<div class="container">
+  <div class="py-5 text-center">
+    <img class="d-block mx-auto mb-4" src="{% static 'img/ocr.svg' %}" alt="" width="100" height="100">
+    <h2>图片字母识别</h2>
+    <p class="lead">本系统可对用户上传图片中包含的字母进行OCR识别，以json格式返回识别结果，并将上传的图片和识别结果保存至后台服务器</p>
+  </div>
+  <div class="row">
+    <div class="col-md-6 order-md-2 mb-6">
+      <h4 class="d-flex justify-content-between align-items-center mb-3">
+        <span class="text-muted">已识别图片</span>
+      </h4>
+      <ul class="list-group mb-3">
+        {% for image in image_files.object_list %}
+          <li class="list-group-item d-flex justify-content-between lh-condensed">
+            <div>
+              <img class="d-block mx-auto thumbnail-image" src="{{ image.image.url }}" alt="{{ image.name }}">
+            </div>
+            {% for letter in image.recognitionresult_set.all|slice:"0:25" %}
+              <span class="text-muted pt-2">{{ letter }}</span>
+            {% endfor %}
+            {% if image.recognitionresult_set.all.count > 25 %}
+              <span class="text-muted pt-2">...</span>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+      <div class="float-right">
+        {{ page_label.begin }}-{{ page_label.end }} / {{ page_label.total }}
+        <div class="btn-group">
+          <ul class="pagination pagination-sm m-0">
+            {% if image_files.has_previous %}
+              <li class="page-item"><a class="page-link" href="?{{ image_files.previous_page_number.querystring }}">«</a></li>
+            {% endif %}
+            {% for page in image_files.pages %}
+              {% if page %}
+                {% ifequal page image_files.number %}
+                  <li class="page-item active"><a class="page-link">{{ page }}</a></li>
+                {% else %}
+                  <li class="page-item"><a class="page-link" href="?{{ page.querystring }}">{{ page }}</a></li>
+                {% endifequal %}
+              {% else %}
+                ...
+              {% endif %}
+            {% endfor %}
+            {% if image_files.has_next %}
+              <li class="page-item"><a class="page-link" href="?{{ image_files.next_page_number.querystring }}">»</a></li>
+            {% endif %}
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-6 order-md-1">
+      <h4 class="mb-3">上传图片</h4>
+      <hr class="mb-4">
+      <img src="{% static 'img/preview.svg' %}" alt="preview" class="d-block mx-auto preview-image" id="previewImage">
+      <hr class="mb-4">
+      <form action="{% url 'index' %}" method='post' enctype="multipart/form-data">
+        {% csrf_token %}
+        <div class="input-group">
+          <div class="custom-file">
+            <input type="file" accept="image/png, image/jpeg" name="image" class="custom-file-input" id="inputImage" required>
+            <label class="custom-file-label text-info" for="inputImage" id="inputImageLabel">选择一张图片（jpg, png）</label>
+          </div>
+          <div class="input-group-append">
+            <button class="btn btn-primary" type="submit" id="uploadSave" disabled="disabled">&ensp;确定&ensp;</button>
+            <button class="btn btn-secondary" type="button" id="uploadCancel" disabled="disabled">&ensp;取消&ensp;</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <footer class="my-5 pt-5 text-muted text-center text-small">
+      <p class="mb-1">&copy; 2017-2020 Takehome OCR识别</p>
+      <ul class="list-inline">
+        <li class="list-inline-item"><a href="https://teletraan.io/">Website</a></li>
+        <li class="list-inline-item"><a href="https://github.com/luochaorobert/takehome">Github</a></li>
+      </ul>
+  </footer>
+</div>
+
+<script src="{% static 'js/jquery.min.js' %}"></script>
+<script src="{% static 'js/docs.min.js' %}"></script>
+<script src="{% static 'js/bootstrap.bundle.min.js' %}"></script>
+
+<script>
+
+  var previewUrl = "{% static 'img/preview.svg' %}";
+
+  // 上传图像预览
+  $('#inputImage').change(function () {
+    var file = this.files[0];
+    // 限制图片体积不能过大
+    if (file.size > 1024*1024*5) {
+      alert("图片大小不能超过5M！");
+      reset_form();
+      return false;
+    };
+    // 确认选择的文件是图片
+    if (file.type.indexOf("image") == 0) {
+      var reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = function (e) {
+        // 图片base64化
+        var newUrl = this.result;
+        $('#previewImage').attr('src', newUrl);
+        $('#uploadSave').removeAttr("disabled");
+        $('#uploadCancel').removeAttr("disabled");
+      };
+    }else {
+      alert("图片格式不正确！");
+      reset_form();
+      return false;
+    };
+  });
+
+  // 取消上传图像
+  $('#uploadCancel').click(function () {
+    reset_form();
+  });
+
+  // 重置表单
+  function reset_form() {
+    $('#previewImage').attr('src', previewUrl);
+    $('#inputImageLabel').text("选择一张图片（jpg, png）");
+    $('#uploadSave').attr("disabled","disabled");
+    $('#uploadCancel').attr("disabled","disabled");
+  };
+
+</script>
+
+</body>
+</html>
